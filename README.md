@@ -7,6 +7,8 @@
 - This is extremely slow encoding, that's why you need to have a GPU to make this work (Nvidia, Intel and AMD)
 - GIF and PNG encoding use palette generation for best quality at minimal file size.
 - GIF encoding gives the best results with two-process encoding.
+- Ogg Audio encoder, dynamic bit rate output to preserve peak quality 
+- (I created all these based on my use case, that is game development and overall project repository size management)
 
 ## Requirements:
  - Any one of Nvidia CUDA GPU Or Intel Quick Sync GPU, or AMD DX11 GPU
