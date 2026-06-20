@@ -19,11 +19,10 @@ SCALE="${5:-100}"
 BASE_PARAMS="-hide_banner -loglevel warning -stats -nostdin"
 OUTPUT_PARAMS="-movflags faststart"
 
-if [ "$SCALE" = "100" ]; then
-    SCALE_FILTER=""
-else
-    SCALE_FILTER="-vf scale=w=iw*${SCALE}/100:h=ih*${SCALE}/100:flags=lanczos"
-fi
+# Force 8-bit 4:2:0 output and ensure dimensions are even (required by
+# H.264/HEVC encoders when using yuv420p). This also converts 10-bit input.
+PIX_FMT="yuv420p"
+VIDEO_FILTER="-vf scale=trunc(iw*${SCALE}/100/2)*2:trunc(ih*${SCALE}/100/2)*2:flags=lanczos,format=${PIX_FMT}"
 
 if [ "$AUDIO" = "1" ]; then
     AUDIO_PARAMS="-c:a aac -q:a 0.75"
@@ -43,13 +42,13 @@ process_file() {
         output_file="${output_dir}/${filename}.mp4"
 
         echo "  Process 1/2: HEVC encoding (CPU fallback)..."
-        ffmpeg ${BASE_PARAMS} -i "${input}" ${SCALE_FILTER} \
+        ffmpeg ${BASE_PARAMS} -i "${input}" ${VIDEO_FILTER} \
             -c:v libx265 -preset slow -crf "${QUALITY}" \
             -r "${FPS}" ${AUDIO_PARAMS} ${OUTPUT_PARAMS} -y "${temp_hevc}"
 
         if [ $? -eq 0 ]; then
             echo "  Process 2/2: H.264 encoding from HEVC..."
-            ffmpeg ${BASE_PARAMS} -i "${temp_hevc}" \
+            ffmpeg ${BASE_PARAMS} -i "${temp_hevc}" ${VIDEO_FILTER} \
                 -c:v libx264 -preset slow -crf "${QUALITY}" \
                 ${AUDIO_PARAMS} ${OUTPUT_PARAMS} -y "${output_file}"
             rm -f "${temp_hevc}"
@@ -59,7 +58,7 @@ process_file() {
         fi
     elif [ "${FORMAT}" = "hevc" ]; then
         output_file="${output_dir}/${filename}.mp4"
-        ffmpeg ${BASE_PARAMS} -i "${input}" ${SCALE_FILTER} \
+        ffmpeg ${BASE_PARAMS} -i "${input}" ${VIDEO_FILTER} \
             -c:v libx265 -preset slow -crf "${QUALITY}" \
             -r "${FPS}" ${AUDIO_PARAMS} ${OUTPUT_PARAMS} -y "${output_file}"
     fi

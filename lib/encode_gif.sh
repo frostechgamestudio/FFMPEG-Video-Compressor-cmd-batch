@@ -18,42 +18,18 @@ SCALE="${5:-100}"
 
 BASE_PARAMS="-hide_banner -loglevel warning -stats -nostdin -err_detect ignore_err"
 
-if [ "$SCALE" = "100" ]; then
-    SCALE_FILTER=""
-else
-    SCALE_FILTER="-vf scale=w=iw*${SCALE}/100:h=ih*${SCALE}/100:flags=lanczos"
-fi
+# Software decode -> hardware HEVC encode for the temp pass. No -hwaccel is
+# used because GPU decoders can pad odd widths, which would defeat the
+# even-dimension scale filter. Keep 4:4:4 chroma for better GIF palettes.
+PIX_FMT="yuv444p"
+VIDEO_FILTER="-vf scale=trunc(iw*${SCALE}/100/2)*2:trunc(ih*${SCALE}/100/2)*2:flags=lanczos,format=${PIX_FMT}"
 
-# Pick first-pass HEVC encoder and hardware acceleration
+# Pick first-pass HEVC encoder based on variant. No hwaccel params are used.
 case "${HW}" in
-    nvidia)
-        HEVC_ENCODER="hevc_nvenc"
-        HWACCEL="cuda"
-        HWOUTPUT="cuda"
-        if [ "$SCALE" = "100" ]; then
-            HWACCEL_PARAMS="-hwaccel ${HWACCEL} -hwaccel_output_format ${HWOUTPUT}"
-        else
-            HWACCEL_PARAMS="-hwaccel ${HWACCEL}"
-        fi
-        ;;
-    amd)
-        HEVC_ENCODER="hevc_amf"
-        HWACCEL_PARAMS=""
-        ;;
-    intel)
-        HEVC_ENCODER="hevc_qsv"
-        HWACCEL="qsv"
-        HWOUTPUT="qsv"
-        if [ "$SCALE" = "100" ]; then
-            HWACCEL_PARAMS="-hwaccel ${HWACCEL} -hwaccel_output_format ${HWOUTPUT}"
-        else
-            HWACCEL_PARAMS="-hwaccel ${HWACCEL}"
-        fi
-        ;;
-    cpu)
-        HEVC_ENCODER="libx265"
-        HWACCEL_PARAMS=""
-        ;;
+    nvidia) HEVC_ENCODER="hevc_nvenc" ;;
+    amd)    HEVC_ENCODER="hevc_amf" ;;
+    intel)  HEVC_ENCODER="hevc_qsv" ;;
+    cpu)    HEVC_ENCODER="libx265" ;;
     *)
         echo "ERROR: Unknown hardware variant '${HW}'. Valid: nvidia, amd, intel, cpu."
         exit 1
@@ -70,11 +46,11 @@ process_file() {
 
     echo "  Process 1/2: HEVC encoding for GIF..."
     if [ "${HW}" = "cpu" ]; then
-        ffmpeg ${BASE_PARAMS} -i "${input}" ${SCALE_FILTER} \
+        ffmpeg ${BASE_PARAMS} -i "${input}" ${VIDEO_FILTER} \
             -c:v libx265 -preset slow -crf "${QUALITY}" -r "${FPS}" \
             -an -sn -dn -pix_fmt yuv444p -y "${temp_hevc}"
     else
-        ffmpeg ${BASE_PARAMS} ${HWACCEL_PARAMS} -i "${input}" ${SCALE_FILTER} \
+        ffmpeg ${BASE_PARAMS} -i "${input}" ${VIDEO_FILTER} \
             -c:v "${HEVC_ENCODER}" -preset:v slow -cq "${QUALITY}" -r "${FPS}" \
             -an -sn -dn -pix_fmt yuv444p -y "${temp_hevc}"
     fi

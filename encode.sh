@@ -17,12 +17,24 @@ echo "Encoded files will appear in Output/."
 echo
 
 # Check FFmpeg availability
-if ! command -v ffmpeg >/dev/null 2>&1; then
+FFMPEG_BIN="$(command -v ffmpeg)"
+if [ -z "${FFMPEG_BIN}" ]; then
     echo "ERROR: FFmpeg not found in PATH."
     echo "Install FFmpeg 7.1+ or add it to system PATH."
     echo "Download: https://ffmpeg.org/download.html"
     exit 1
 fi
+
+# Warn when a custom /usr/local/bin/ffmpeg build is used.
+case "${FFMPEG_BIN}" in
+    /usr/local/bin/ffmpeg)
+        echo "WARNING: Using ${FFMPEG_BIN}."
+        echo "Some static builds report NVENC but do not accept every encoder option"
+        echo "(e.g. -tune uhq for hevc_nvenc). If hardware encoding fails, try the"
+        echo "distro ffmpeg package or switch to CPU fallback."
+        echo
+        ;;
+esac
 
 # Create required directories
 mkdir -p "Input" "Output"
@@ -70,7 +82,7 @@ esac
 # Validate the selected encoder is available in this FFmpeg build
 echo
 echo "Checking selected encoder availability..."
-if ! ffmpeg -encoders 2>/dev/null | grep -qi "^\s*V....*${ENCODER_CHECK}\s"; then
+if ! "${FFMPEG_BIN}" -encoders 2>/dev/null | grep -qi "^\s*V....*${ENCODER_CHECK}\s"; then
     echo "ERROR: Selected encoder ${ENCODER_CHECK} is not available."
     echo "Reason: no compatible hardware encoder found in this FFmpeg build or system."
     echo "Falling back to CPU encoding. Encoding will be significantly slower."

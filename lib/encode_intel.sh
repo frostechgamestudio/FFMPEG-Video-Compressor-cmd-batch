@@ -18,16 +18,13 @@ SCALE="${5:-100}"
 
 BASE_PARAMS="-hide_banner -loglevel warning -stats -nostdin"
 OUTPUT_PARAMS="-movflags faststart"
-HWACCEL="qsv"
-HWOUTPUT="qsv"
 
-if [ "$SCALE" = "100" ]; then
-    SCALE_FILTER=""
-    HWACCEL_PARAMS="-hwaccel ${HWACCEL} -hwaccel_output_format ${HWOUTPUT}"
-else
-    SCALE_FILTER="-vf scale=w=iw*${SCALE}/100:h=ih*${SCALE}/100:flags=lanczos"
-    HWACCEL_PARAMS="-hwaccel ${HWACCEL}"
-fi
+# Software decode -> hardware QSV encode. We deliberately do not use
+# -hwaccel qsv here because the QSV decoder may pad odd widths to even
+# values, which makes the scale filter see a different input width than the
+# original file. Force 8-bit 4:2:0 output and even dimensions.
+PIX_FMT="yuv420p"
+VIDEO_FILTER="-vf scale=trunc(iw*${SCALE}/100/2)*2:trunc(ih*${SCALE}/100/2)*2:flags=lanczos,format=${PIX_FMT}"
 
 if [ "$AUDIO" = "1" ]; then
     AUDIO_PARAMS="-c:a aac -q:a 0.75"
@@ -47,13 +44,13 @@ process_file() {
         output_file="${output_dir}/${filename}.mp4"
 
         echo "  Process 1/2: HEVC encoding..."
-        ffmpeg ${BASE_PARAMS} ${HWACCEL_PARAMS} -i "${input}" ${SCALE_FILTER} \
+        ffmpeg ${BASE_PARAMS} -i "${input}" ${VIDEO_FILTER} \
             -c:v hevc_qsv -preset veryslow -profile:v main -tier main -global_quality "${QUALITY}" \
             -r "${FPS}" ${AUDIO_PARAMS} ${OUTPUT_PARAMS} -y "${temp_hevc}"
 
         if [ $? -eq 0 ]; then
             echo "  Process 2/2: H.264 encoding from HEVC..."
-            ffmpeg ${BASE_PARAMS} ${HWACCEL_PARAMS} -i "${temp_hevc}" \
+            ffmpeg ${BASE_PARAMS} -i "${temp_hevc}" ${VIDEO_FILTER} \
                 -c:v h264_qsv -preset veryslow -profile:v main -tier main -global_quality "${QUALITY}" \
                 ${AUDIO_PARAMS} ${OUTPUT_PARAMS} -y "${output_file}"
             rm -f "${temp_hevc}"
@@ -63,7 +60,7 @@ process_file() {
         fi
     elif [ "${FORMAT}" = "hevc" ]; then
         output_file="${output_dir}/${filename}.mp4"
-        ffmpeg ${BASE_PARAMS} ${HWACCEL_PARAMS} -i "${input}" ${SCALE_FILTER} \
+        ffmpeg ${BASE_PARAMS} -i "${input}" ${VIDEO_FILTER} \
             -c:v hevc_qsv -preset veryslow -profile:v main -tier main -global_quality "${QUALITY}" \
             -r "${FPS}" ${AUDIO_PARAMS} ${OUTPUT_PARAMS} -y "${output_file}"
     fi

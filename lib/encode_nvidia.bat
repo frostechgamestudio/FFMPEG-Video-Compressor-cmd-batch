@@ -17,16 +17,13 @@ set "SCALE=%~5"
 
 set "BASE_PARAMS=-hide_banner -loglevel warning -stats -nostdin"
 set "OUTPUT_PARAMS=-movflags faststart"
-set "HWACCEL=cuda"
-set "HWOUTPUT=cuda"
 
-if "%SCALE%"=="100" (
-    set "SCALE_FILTER="
-    set "HWACCEL_PARAMS=-hwaccel %HWACCEL% -hwaccel_output_format %HWOUTPUT%"
-) else (
-    set "SCALE_FILTER=-vf scale=w=iw*%SCALE%/100:h=ih*%SCALE%/100:flags=lanczos"
-    set "HWACCEL_PARAMS=-hwaccel %HWACCEL%"
-)
+:: Software decode -> hardware NVENC encode. We deliberately do not use
+:: -hwaccel cuda here because the NVDEC decoder can pad odd widths to even
+:: values, which makes the scale filter see a different input width than the
+:: original file. Force 8-bit 4:2:0 output and even dimensions.
+set "PIX_FMT=yuv420p"
+set "VIDEO_FILTER=-vf scale=trunc(iw*%SCALE%/100/2)*2:trunc(ih*%SCALE%/100/2)*2:flags=lanczos,format=%PIX_FMT%"
 
 if "%AUDIO%"=="1" (
     set "AUDIO_PARAMS=-c:a aac -q:a 0.75"
@@ -61,11 +58,11 @@ for /r "Input" %%F in (*.mp4 *.avi *.mkv *.mov *.wmv *.webm *.flv *.m4v *.ts *.m
         set "outputFile=!outputDir!!fileName!.mp4"
 
         echo   Process 1/2: HEVC encoding...
-        ffmpeg %BASE_PARAMS% %HWACCEL_PARAMS% -i "%%F" %SCALE_FILTER% -c:v hevc_nvenc -preset slow -profile:v main -tune uhq -cq %QUALITY% -r %FPS% %AUDIO_PARAMS% %OUTPUT_PARAMS% -y "!tempHevcFile!"
+        ffmpeg %BASE_PARAMS% -i "%%F" %VIDEO_FILTER% -c:v hevc_nvenc -preset slow -profile:v main -tune hq -cq %QUALITY% -r %FPS% %AUDIO_PARAMS% %OUTPUT_PARAMS% -y "!tempHevcFile!"
 
         if !ERRORLEVEL! equ 0 (
             echo   Process 2/2: H.264 encoding from HEVC...
-            ffmpeg %BASE_PARAMS% %HWACCEL_PARAMS% -i "!tempHevcFile!" -c:v h264_nvenc -preset slow -profile:v main -tune hq -cq %QUALITY% %AUDIO_PARAMS% %OUTPUT_PARAMS% -y "!outputFile!"
+            ffmpeg %BASE_PARAMS% -i "!tempHevcFile!" %VIDEO_FILTER% -c:v h264_nvenc -preset slow -profile:v main -tune hq -cq %QUALITY% %AUDIO_PARAMS% %OUTPUT_PARAMS% -y "!outputFile!"
             del "!tempHevcFile!" 2>nul
         ) else (
             echo   Error in HEVC encoding, skipping H.264 process
@@ -74,7 +71,7 @@ for /r "Input" %%F in (*.mp4 *.avi *.mkv *.mov *.wmv *.webm *.flv *.m4v *.ts *.m
     ) else if /I "!FORMAT!"=="hevc" (
         :: Single-process HEVC encoding
         set "outputFile=!outputDir!!fileName!.mp4"
-        ffmpeg %BASE_PARAMS% %HWACCEL_PARAMS% -i "%%F" %SCALE_FILTER% -c:v hevc_nvenc -preset slow -profile:v main -tune uhq -cq %QUALITY% -r %FPS% %AUDIO_PARAMS% %OUTPUT_PARAMS% -y "!outputFile!"
+        ffmpeg %BASE_PARAMS% -i "%%F" %VIDEO_FILTER% -c:v hevc_nvenc -preset slow -profile:v main -tune hq -cq %QUALITY% -r %FPS% %AUDIO_PARAMS% %OUTPUT_PARAMS% -y "!outputFile!"
     )
 
     :: Clean up temporary files

@@ -17,46 +17,19 @@ set "SCALE=%~5"
 
 set "BASE_PARAMS=-hide_banner -loglevel warning -stats -nostdin -err_detect ignore_err"
 
-if "%SCALE%"=="100" (
-    set "SCALE_FILTER="
-) else (
-    set "SCALE_FILTER=-vf scale=w=iw*%SCALE%/100:h=ih*%SCALE%/100:flags=lanczos"
-)
+:: Software decode -> hardware HEVC encode for the temp pass. No -hwaccel is
+:: used because GPU decoders can pad odd widths, which would defeat the
+:: even-dimension scale filter. Keep 4:4:4 chroma for better GIF palettes.
+set "PIX_FMT=yuv444p"
+set "VIDEO_FILTER=-vf scale=trunc(iw*%SCALE%/100/2)*2:trunc(ih*%SCALE%/100/2)*2:flags=lanczos,format=%PIX_FMT%"
 
-:: Pick the first-pass HEVC encoder and any hardware acceleration based on variant
+:: Pick the first-pass HEVC encoder based on variant
 set "HEVC_ENCODER="
-set "HWACCEL_PARAMS="
-set "HWACCEL="
-set "HWOUTPUT="
 
-if /I "%HW%"=="nvidia" (
-    set "HEVC_ENCODER=hevc_nvenc"
-    set "HWACCEL=cuda"
-    set "HWOUTPUT=cuda"
-)
-if /I "%HW%"=="amd" (
-    set "HEVC_ENCODER=hevc_amf"
-    set "HWACCEL=d3d11va"
-    set "HWOUTPUT=d3d11"
-)
-if /I "%HW%"=="intel" (
-    set "HEVC_ENCODER=hevc_qsv"
-    set "HWACCEL=qsv"
-    set "HWOUTPUT=qsv"
-)
-if /I "%HW%"=="cpu" (
-    set "HEVC_ENCODER=libx265"
-)
-
-if "%SCALE%"=="100" (
-    if /I "%HW%"=="nvidia" set "HWACCEL_PARAMS=-hwaccel %HWACCEL% -hwaccel_output_format %HWOUTPUT%"
-    if /I "%HW%"=="amd"    set "HWACCEL_PARAMS=-hwaccel %HWACCEL% -hwaccel_output_format %HWOUTPUT%"
-    if /I "%HW%"=="intel"  set "HWACCEL_PARAMS=-hwaccel %HWACCEL% -hwaccel_output_format %HWOUTPUT%"
-) else (
-    if /I "%HW%"=="nvidia" set "HWACCEL_PARAMS=-hwaccel %HWACCEL%"
-    if /I "%HW%"=="amd"    set "HWACCEL_PARAMS=-hwaccel %HWACCEL%"
-    if /I "%HW%"=="intel"  set "HWACCEL_PARAMS=-hwaccel %HWACCEL%"
-)
+if /I "%HW%"=="nvidia" set "HEVC_ENCODER=hevc_nvenc"
+if /I "%HW%"=="amd"    set "HEVC_ENCODER=hevc_amf"
+if /I "%HW%"=="intel"  set "HEVC_ENCODER=hevc_qsv"
+if /I "%HW%"=="cpu"    set "HEVC_ENCODER=libx265"
 
 :: ===== PROCESS FILES =====
 for /r "Input" %%F in (*.mp4 *.avi *.mkv *.mov *.wmv *.webm *.flv *.m4v *.ts *.mts *.mpeg *.mpg) do (
@@ -84,9 +57,9 @@ for /r "Input" %%F in (*.mp4 *.avi *.mkv *.mov *.wmv *.webm *.flv *.m4v *.ts *.m
 
     echo   Process 1/2: HEVC encoding for GIF...
     if /I "%HW%"=="cpu" (
-        ffmpeg %BASE_PARAMS% -i "%%F" %SCALE_FILTER% -c:v libx265 -preset slow -crf %QUALITY% -r %FPS% -an -sn -dn -pix_fmt yuv444p -y "!tempHevcFile!"
+        ffmpeg %BASE_PARAMS% -i "%%F" %VIDEO_FILTER% -c:v libx265 -preset slow -crf %QUALITY% -r %FPS% -an -sn -dn -pix_fmt yuv444p -y "!tempHevcFile!"
     ) else (
-        ffmpeg %BASE_PARAMS% %HWACCEL_PARAMS% -i "%%F" %SCALE_FILTER% -c:v %HEVC_ENCODER% -preset:v slow -cq %QUALITY% -r %FPS% -an -sn -dn -pix_fmt yuv444p -y "!tempHevcFile!"
+        ffmpeg %BASE_PARAMS% -i "%%F" %VIDEO_FILTER% -c:v %HEVC_ENCODER% -preset:v slow -cq %QUALITY% -r %FPS% -an -sn -dn -pix_fmt yuv444p -y "!tempHevcFile!"
     )
 
     if !ERRORLEVEL! equ 0 (

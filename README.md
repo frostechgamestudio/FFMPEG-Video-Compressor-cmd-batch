@@ -16,6 +16,7 @@ Cross-platform batch wrapper for FFmpeg hardware-accelerated video encoding.
   - **NVIDIA:** `h264_nvenc`, `hevc_nvenc`
   - **AMD:** `h264_amf`, `hevc_amf` (Windows: DX11 / Linux: Vulkan)
   - **Intel:** `h264_qsv`, `hevc_qsv`
+- On Linux, static builds (e.g. johnvansickle.com) usually do **not** include NVENC/AMF/QSV. Use your distribution's `ffmpeg` package for hardware acceleration.
 - Windows 10/11 for `Encode.bat`, or a Linux/macOS shell for `encode.sh`.
 - Input videos placed in the `Input/` folder. Output is written to `Output/` while preserving the subdirectory structure.
 
@@ -62,5 +63,8 @@ Cross-platform batch wrapper for FFmpeg hardware-accelerated video encoding.
 - The FFmpeg command chains and encoder parameters are preserved from the original Windows scripts. Only the wrapper logic, parameter passing and cross-platform paths were changed.
 - PNG encoding was removed because it was not as useful as the video and GIF workflows.
 - The old batch files have been moved to the `archive/` folder for reference.
+- All encoders (Linux `.sh` and Windows `.bat`) now force output to 8-bit `yuv420p` and round width/height to even numbers. This fixes two common failures:
+  - odd-resolution inputs causing `Picture width must be an integer multiple of the specified chroma subsampling`
+  - 10-bit (or other high-bit-depth) inputs being rejected by 8-bit hardware encoders
 
 *Note: GitHub Copilot assisted with command structure layout. All FFmpeg parameters are based on personal research and optimisation.*
